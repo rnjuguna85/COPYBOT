@@ -468,7 +468,8 @@ async function pollRealWallet(wid){
 
   // Filter to new trades only (not seen before)
   var newTrades=trades.filter(function(t){
-    return t.id&&W[wid].lastTxIds.indexOf(t.id)===-1;
+    var uid=t.transactionHash||t.id||'';
+    return uid&&W[wid].lastTxIds.indexOf(uid)===-1;
   });
 
   if(!newTrades.length){
@@ -479,7 +480,8 @@ async function pollRealWallet(wid){
 
   // Mark as seen
   newTrades.forEach(function(t){
-    if(t.id)W[wid].lastTxIds.push(t.id);
+    var uid=t.transactionHash||t.id||'';
+    if(uid)W[wid].lastTxIds.push(uid);
   });
   // Keep only last 200 IDs
   if(W[wid].lastTxIds.length>200)W[wid].lastTxIds=W[wid].lastTxIds.slice(-200);
@@ -501,27 +503,33 @@ async function pollRealWallet(wid){
 
 // ── Parse real trade and process ────────────────────────────
 function processRealTrade(wid,rawTrade,lag){
-  // Polymarket activity structure:
+  // Real Polymarket structure:
   // rawTrade.side: 'BUY' or 'SELL'
-  // rawTrade.price: outcome price (0-1)
-  // rawTrade.size: number of shares
-  // rawTrade.usdcSize: dollar amount
-  // rawTrade.outcome: 'Yes' or 'No'
-  // rawTrade.market: market conditionId
-  // rawTrade.timestamp: unix timestamp
+  // rawTrade.price: 0-1 float (e.g. 0.62 = 62c)
+  // rawTrade.usdcSize: dollar amount spent
+  // rawTrade.outcome: 'Up','Down','Yes','No'
+  // rawTrade.conditionId: market ID
+  // rawTrade.title: market title
+  // rawTrade.type: 'TRADE' or 'MAKER_REBATE' etc
+  // rawTrade.transactionHash: unique ID
+
+  // Skip non-trade events
+  if(rawTrade.type&&rawTrade.type!=='TRADE')return;
 
   var side=rawTrade.side;
   if(!side||side.toUpperCase()==='SELL'){
-    // SELL = closing a position — check for early exit
     checkPositionExit(wid,rawTrade);return;
   }
 
   var price=parseFloat(rawTrade.price)||0.5;
-  var usdcSize=parseFloat(rawTrade.usdcSize||rawTrade.amount||0);
+  var usdcSize=parseFloat(rawTrade.usdcSize||0);
   var outcome=rawTrade.outcome||'Yes';
-  var isYes=outcome.toLowerCase()==='yes'||outcome==='1';
+  // Up/Yes = YES side, Down/No = NO side
+  var isYes=outcome==='Up'||outcome.toLowerCase()==='yes'||rawTrade.outcomeIndex===0;
 
   if(!usdcSize||usdcSize<0.5)return; // ignore dust
+
+  var marketTitle=rawTrade.title||rawTrade.slug||rawTrade.conditionId||'';
 
   // Build trade signal
   var signal={
@@ -529,14 +537,15 @@ function processRealTrade(wid,rawTrade,lag){
     side:isYes?'YES':'NO',
     entry:parseFloat((price*100).toFixed(1)),
     theirStake:usdcSize,
-    timeLeft:120, // assume 2min remaining
+    timeLeft:300, // 5min BTC markets
     detectedAt:Date.now()-lag,
     lag:Math.round(lag),
-    market:rawTrade.market||'',
-    rawId:rawTrade.id||''
+    market:rawTrade.conditionId||'',
+    marketTitle:marketTitle,
+    rawId:rawTrade.transactionHash||rawTrade.id||''
   };
 
-  addLog('[W'+wid+'] REAL: '+signal.side+' '+signal.entry+'c $'+usdcSize.toFixed(2)+' lag:'+lag+'ms','w'+wid);
+  addLog('[W'+wid+'] REAL: '+signal.side+' '+signal.entry+'c $'+usdcSize.toFixed(2)+' "'+marketTitle.slice(0,30)+'" lag:'+lag+'ms','w'+wid);
   processTrade(signal);
 }
 
