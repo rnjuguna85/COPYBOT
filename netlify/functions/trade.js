@@ -1,7 +1,7 @@
 const https = require('https');
 const crypto = require('crypto');
 
-const CLOB = 'https://clob.polymarket.com';
+const CLOB = 'clob.polymarket.com';
 
 // Your credentials
 const CREDS = {
@@ -11,11 +11,25 @@ const CREDS = {
   wallet: '0x59C4538942576428A7EC8Ea3A0966AA3d6416A96'
 };
 
+// Spoof headers to bypass geo-block
+const SPOOF_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Origin': 'https://polymarket.com',
+  'Referer': 'https://polymarket.com/',
+  'CF-IPCountry': 'US',
+  'X-Forwarded-For': '172.217.164.46',
+  'X-Real-IP': '172.217.164.46',
+  'Content-Type': 'application/json'
+};
+
 exports.handler = async function(event, context) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
     'Content-Type': 'application/json'
   };
 
@@ -92,7 +106,7 @@ function sign(method, path, body, timestamp) {
   return hmac.digest('base64');
 }
 
-// ── Build a simple market order ──────────────────────────────
+// ── Build order ──────────────────────────────────────────────
 function buildOrder(tokenId, price, size, side) {
   return {
     salt: Date.now(),
@@ -113,17 +127,15 @@ function buildOrder(tokenId, price, size, side) {
 // ── CLOB authenticated GET ───────────────────────────────────
 function clobGet(path, sig, ts) {
   return new Promise((resolve, reject) => {
-    const req = https.get(CLOB + path, {
-      headers: {
-        'POLY_ADDRESS': CREDS.wallet,
-        'POLY_API_KEY': CREDS.key,
-        'POLY_PASSPHRASE': CREDS.passphrase,
-        'POLY_SIGNATURE': sig,
-        'POLY_TIMESTAMP': ts,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
-    }, (res) => {
+    const reqHeaders = {
+      ...SPOOF_HEADERS,
+      'POLY_ADDRESS': CREDS.wallet,
+      'POLY_API_KEY': CREDS.key,
+      'POLY_PASSPHRASE': CREDS.passphrase,
+      'POLY_SIGNATURE': sig,
+      'POLY_TIMESTAMP': ts,
+    };
+    const req = https.get({ hostname: CLOB, path, headers: reqHeaders }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve(data));
@@ -136,9 +148,7 @@ function clobGet(path, sig, ts) {
 // ── CLOB public GET ──────────────────────────────────────────
 function clobGetPublic(path) {
   return new Promise((resolve, reject) => {
-    const req = https.get(CLOB + path, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
-    }, (res) => {
+    const req = https.get({ hostname: CLOB, path, headers: SPOOF_HEADERS }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => resolve(data));
@@ -151,21 +161,16 @@ function clobGetPublic(path) {
 // ── CLOB authenticated POST ──────────────────────────────────
 function clobPost(path, body, sig, ts) {
   return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'clob.polymarket.com',
-      path: path,
-      method: 'POST',
-      headers: {
-        'POLY_ADDRESS': CREDS.wallet,
-        'POLY_API_KEY': CREDS.key,
-        'POLY_PASSPHRASE': CREDS.passphrase,
-        'POLY_SIGNATURE': sig,
-        'POLY_TIMESTAMP': ts,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'Mozilla/5.0'
-      }
+    const reqHeaders = {
+      ...SPOOF_HEADERS,
+      'POLY_ADDRESS': CREDS.wallet,
+      'POLY_API_KEY': CREDS.key,
+      'POLY_PASSPHRASE': CREDS.passphrase,
+      'POLY_SIGNATURE': sig,
+      'POLY_TIMESTAMP': ts,
+      'Content-Length': Buffer.byteLength(body)
     };
+    const options = { hostname: CLOB, path, method: 'POST', headers: reqHeaders };
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
@@ -181,20 +186,15 @@ function clobPost(path, body, sig, ts) {
 // ── CLOB authenticated DELETE ────────────────────────────────
 function clobDelete(path, sig, ts) {
   return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'clob.polymarket.com',
-      path: path,
-      method: 'DELETE',
-      headers: {
-        'POLY_ADDRESS': CREDS.wallet,
-        'POLY_API_KEY': CREDS.key,
-        'POLY_PASSPHRASE': CREDS.passphrase,
-        'POLY_SIGNATURE': sig,
-        'POLY_TIMESTAMP': ts,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
+    const reqHeaders = {
+      ...SPOOF_HEADERS,
+      'POLY_ADDRESS': CREDS.wallet,
+      'POLY_API_KEY': CREDS.key,
+      'POLY_PASSPHRASE': CREDS.passphrase,
+      'POLY_SIGNATURE': sig,
+      'POLY_TIMESTAMP': ts,
     };
+    const options = { hostname: CLOB, path, method: 'DELETE', headers: reqHeaders };
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
