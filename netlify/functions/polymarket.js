@@ -16,23 +16,15 @@ exports.handler = async function(event, context) {
   const endpoint = params.endpoint;
 
   if (!endpoint) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: 'Missing endpoint parameter' })
-    };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing endpoint' }) };
   }
-
-  const allowed = [
-    'gamma-api.polymarket.com',
-    'data-api.polymarket.com',
-    'clob.polymarket.com'
-  ];
 
   let targetUrl = '';
 
   try {
-    if (endpoint === 'markets') {
+    if (endpoint === 'btc') {
+      targetUrl = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+    } else if (endpoint === 'markets') {
       targetUrl = 'https://gamma-api.polymarket.com/markets?active=true&tag=crypto&limit=50';
     } else if (endpoint === 'trades') {
       const marketId = params.market_id;
@@ -46,8 +38,6 @@ exports.handler = async function(event, context) {
       const address = params.address;
       if (!address) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing address' }) };
       targetUrl = `https://data-api.polymarket.com/positions?user=${address}&sizeThreshold=0`;
-    } else if (endpoint === 'btc') {
-      targetUrl = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
     } else {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Unknown endpoint' }) };
     }
@@ -56,21 +46,14 @@ exports.handler = async function(event, context) {
     return { statusCode: 200, headers, body: data };
 
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: err.message, url: targetUrl })
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
 
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'application/json'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
