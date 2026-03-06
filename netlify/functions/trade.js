@@ -1,9 +1,9 @@
 const https = require('https');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const CLOB = 'clob.polymarket.com';
 
-// Your credentials
 const CREDS = {
   key: '44c916f2-a6e7-3cc7-9a17-d9b7969e5960',
   secret: 'ccStQQiZBJLNIei-DPSnFV0wvx--h0S8SCNKR-hNje8=',
@@ -11,10 +11,9 @@ const CREDS = {
   wallet: '0x59C4538942576428A7EC8Ea3A0966AA3d6416A96'
 };
 
-// Spoof headers to bypass geo-block
 const SPOOF_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
+  'Accept': 'application/json',
   'Accept-Language': 'en-US,en;q=0.9',
   'Accept-Encoding': 'gzip, deflate, br',
   'Origin': 'https://polymarket.com',
@@ -33,61 +32,53 @@ exports.handler = async function(event, context) {
     'Content-Type': 'application/json'
   };
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
-  }
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   const params = event.queryStringParameters || {};
   const action = params.action;
 
   try {
-    // ── GET BALANCE ──────────────────────────────────────────
     if (action === 'balance') {
       const ts = Math.floor(Date.now() / 1000).toString();
       const sig = sign('GET', '/balance', '', ts);
-      const data = await clobGet('/balance', sig, ts);
+      const data = await clobReq({ method: 'GET', path: '/balance', sig, ts });
       return { statusCode: 200, headers, body: data };
     }
 
-    // ── GET OPEN ORDERS ──────────────────────────────────────
     if (action === 'orders') {
       const ts = Math.floor(Date.now() / 1000).toString();
       const sig = sign('GET', '/orders', '', ts);
-      const data = await clobGet('/orders', sig, ts);
+      const data = await clobReq({ method: 'GET', path: '/orders', sig, ts });
       return { statusCode: 200, headers, body: data };
     }
 
-    // ── GET MARKET PRICE ─────────────────────────────────────
     if (action === 'price') {
       const tokenId = params.token_id;
       if (!tokenId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing token_id' }) };
-      const data = await clobGetPublic('/midpoint?token_id=' + tokenId);
+      const data = await clobReq({ method: 'GET', path: '/midpoint?token_id=' + tokenId });
       return { statusCode: 200, headers, body: data };
     }
 
-    // ── PLACE ORDER ──────────────────────────────────────────
     if (action === 'buy') {
       const body = event.body ? JSON.parse(event.body) : {};
       const { tokenId, price, size } = body;
       if (!tokenId || !price || !size) {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing tokenId, price, or size' }) };
       }
-
       const order = buildOrder(tokenId, price, size, 'BUY');
       const ts = Math.floor(Date.now() / 1000).toString();
       const orderBody = JSON.stringify({ order, owner: CREDS.wallet, orderType: 'GTC' });
       const sig = sign('POST', '/order', orderBody, ts);
-      const data = await clobPost('/order', orderBody, sig, ts);
+      const data = await clobReq({ method: 'POST', path: '/order', body: orderBody, sig, ts });
       return { statusCode: 200, headers, body: data };
     }
 
-    // ── CANCEL ORDER ─────────────────────────────────────────
     if (action === 'cancel') {
       const orderId = params.order_id;
       if (!orderId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing order_id' }) };
       const ts = Math.floor(Date.now() / 1000).toString();
       const sig = sign('DELETE', '/order/' + orderId, '', ts);
-      const data = await clobDelete('/order/' + orderId, sig, ts);
+      const data = await clobReq({ method: 'DELETE', path: '/order/' + orderId, sig, ts });
       return { statusCode: 200, headers, body: data };
     }
 
@@ -98,7 +89,6 @@ exports.handler = async function(event, context) {
   }
 };
 
-// ── HMAC-SHA256 signature ────────────────────────────────────
 function sign(method, path, body, timestamp) {
   const msg = timestamp + method + path + (body || '');
   const hmac = crypto.createHmac('sha256', Buffer.from(CREDS.secret, 'base64'));
@@ -106,7 +96,6 @@ function sign(method, path, body, timestamp) {
   return hmac.digest('base64');
 }
 
-// ── Build order ──────────────────────────────────────────────
 function buildOrder(tokenId, price, size, side) {
   return {
     salt: Date.now(),
@@ -124,84 +113,51 @@ function buildOrder(tokenId, price, size, side) {
   };
 }
 
-// ── CLOB authenticated GET ───────────────────────────────────
-function clobGet(path, sig, ts) {
+// ── Universal CLOB request with gzip decompression ───────────
+function clobReq({ method, path, body, sig, ts }) {
   return new Promise((resolve, reject) => {
-    const reqHeaders = {
-      ...SPOOF_HEADERS,
-      'POLY_ADDRESS': CREDS.wallet,
-      'POLY_API_KEY': CREDS.key,
-      'POLY_PASSPHRASE': CREDS.passphrase,
-      'POLY_SIGNATURE': sig,
-      'POLY_TIMESTAMP': ts,
-    };
-    const req = https.get({ hostname: CLOB, path, headers: reqHeaders }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
-    });
-    req.on('error', reject);
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
+    const reqHeaders = { ...SPOOF_HEADERS };
+    if (sig) {
+      reqHeaders['POLY_ADDRESS'] = CREDS.wallet;
+      reqHeaders['POLY_API_KEY'] = CREDS.key;
+      reqHeaders['POLY_PASSPHRASE'] = CREDS.passphrase;
+      reqHeaders['POLY_SIGNATURE'] = sig;
+      reqHeaders['POLY_TIMESTAMP'] = ts;
+    }
+    if (body) reqHeaders['Content-Length'] = Buffer.byteLength(body);
 
-// ── CLOB public GET ──────────────────────────────────────────
-function clobGetPublic(path) {
-  return new Promise((resolve, reject) => {
-    const req = https.get({ hostname: CLOB, path, headers: SPOOF_HEADERS }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
-    });
-    req.on('error', reject);
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
+    const options = { hostname: CLOB, path, method: method || 'GET', headers: reqHeaders };
 
-// ── CLOB authenticated POST ──────────────────────────────────
-function clobPost(path, body, sig, ts) {
-  return new Promise((resolve, reject) => {
-    const reqHeaders = {
-      ...SPOOF_HEADERS,
-      'POLY_ADDRESS': CREDS.wallet,
-      'POLY_API_KEY': CREDS.key,
-      'POLY_PASSPHRASE': CREDS.passphrase,
-      'POLY_SIGNATURE': sig,
-      'POLY_TIMESTAMP': ts,
-      'Content-Length': Buffer.byteLength(body)
-    };
-    const options = { hostname: CLOB, path, method: 'POST', headers: reqHeaders };
     const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        const encoding = res.headers['content-encoding'];
+        if (encoding === 'gzip') {
+          zlib.gunzip(buf, (err, decoded) => {
+            if (err) reject(err);
+            else resolve(decoded.toString('utf8'));
+          });
+        } else if (encoding === 'br') {
+          zlib.brotliDecompress(buf, (err, decoded) => {
+            if (err) reject(err);
+            else resolve(decoded.toString('utf8'));
+          });
+        } else if (encoding === 'deflate') {
+          zlib.inflate(buf, (err, decoded) => {
+            if (err) reject(err);
+            else resolve(decoded.toString('utf8'));
+          });
+        } else {
+          resolve(buf.toString('utf8'));
+        }
+      });
     });
-    req.on('error', reject);
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
-    req.write(body);
-    req.end();
-  });
-}
 
-// ── CLOB authenticated DELETE ────────────────────────────────
-function clobDelete(path, sig, ts) {
-  return new Promise((resolve, reject) => {
-    const reqHeaders = {
-      ...SPOOF_HEADERS,
-      'POLY_ADDRESS': CREDS.wallet,
-      'POLY_API_KEY': CREDS.key,
-      'POLY_PASSPHRASE': CREDS.passphrase,
-      'POLY_SIGNATURE': sig,
-      'POLY_TIMESTAMP': ts,
-    };
-    const options = { hostname: CLOB, path, method: 'DELETE', headers: reqHeaders };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
-    });
     req.on('error', reject);
     req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
+    if (body) req.write(body);
     req.end();
   });
 }
