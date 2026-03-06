@@ -214,10 +214,18 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
       </select>
     </div>
   </div>
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;align-items:center;">
     <button class="btn-go" id="btnStart" onclick="startBot()">START</button>
     <button class="btn-stp" id="btnStop" onclick="stopBot()" disabled>STOP</button>
     <button class="btn-rst" onclick="resetBot()">RESET</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;color:var(--mid);font-family:var(--mono);">LIVE TRADING</span>
+      <label class="tog" title="Enable real money trading">
+        <input type="checkbox" id="liveTog" onchange="toggleLive()">
+        <span class="tog-sl"></span>
+      </label>
+      <span style="font-size:8px;font-family:var(--mono);padding:2px 7px;border-radius:3px;" id="liveLabel" style="background:#ff225515;color:var(--dn);border:1px solid #ff225540;">PAPER</span>
+    </div>
   </div>
 </div>
 
@@ -348,7 +356,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
 
 <script>
 var PROXY='/.netlify/functions/polymarket';
-var S={running:false,bal:200,startBal:200,pnl:0,wins:0,losses:0,trades:0,skips:0,dailyLoss:0,earlyExits:0,staleSkips:0,lagSamples:[],slipSamples:[]};
+var TRADE='/.netlify/functions/trade';
+var LIVE_MODE=false;
+var S={running:false,bal:200,startBal:200,pnl:0,wins:0,losses:0,trades:0,skips:0,dailyLoss:0,earlyExits:0,staleSkips:0,lagSamples:[],slipSamples:[],liveBalance:0};
 var W={1:{id:1,on:true,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w1)',lastTxIds:[],lastPositionIds:[]},
        2:{id:2,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w2)',lastTxIds:[],lastPositionIds:[]},
        3:{id:3,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w3)',lastTxIds:[],lastPositionIds:[]}};
@@ -673,8 +683,51 @@ function processTrade(tr){
   execCopy(tr,adj);
 }
 
+
+// ── Live trade execution ─────────────────────────────────────
+async function placeLiveTrade(tr, stake){
+  if(!LIVE_MODE) return false;
+  try{
+    addLog('[LIVE] Placing real order: '+tr.side+' $'+stake+' @'+tr.entry+'c','y');
+    var body=JSON.stringify({
+      tokenId: tr.tokenId||tr.market,
+      price: tr.entry/100,
+      size: stake
+    });
+    var r=await fetch(TRADE+'?action=buy',{method:'POST',headers:{'Content-Type':'application/json'},body:body});
+    var data=await r.json();
+    if(data.orderID||data.id||data.success){
+      addLog('[LIVE] Order placed! ID: '+(data.orderID||data.id||'OK'),'g');
+      return true;
+    } else {
+      addLog('[LIVE] Order failed: '+JSON.stringify(data),'r');
+      return false;
+    }
+  }catch(e){
+    addLog('[LIVE] Error: '+e.message,'r');
+    return false;
+  }
+}
+
+// ── Fetch live balance ───────────────────────────────────────
+async function fetchLiveBalance(){
+  try{
+    var r=await fetch(TRADE+'?action=balance');
+    var data=await r.json();
+    if(data.balance||data.availableBalance){
+      S.liveBalance=parseFloat(data.balance||data.availableBalance||0);
+      addLog('[LIVE] Balance: $'+S.liveBalance.toFixed(2),'b');
+      sv('bBal','$'+S.liveBalance.toFixed(2));
+    }
+  }catch(e){addLog('[LIVE] Balance check failed: '+e.message,'r');}
+}
+
 function execCopy(tr,stake){
   var sh=stake/(tr.entry/100),pw=parseFloat((sh-stake).toFixed(2));
+  if(LIVE_MODE){
+    placeLiveTrade(tr,stake); // fire real order async
+    addLog('[LIVE] Real trade submitted — paper tracking continues','y');
+  }
   S.bal-=stake;S.trades++;var num=S.trades;
   var t={num:num,wid:tr.wid,side:tr.side,stake:stake,entry:tr.entry,
     shares:parseFloat(sh.toFixed(2)),potWin:pw,
@@ -881,6 +934,24 @@ function resetBot(){
   sv('spdLag','--ms');sv('spdSlip','--c');sv('spdStale','0');sv('spdExits','0');
   sched(true,true,true);rafId=requestAnimationFrame(renderLoop);
   addLog('Reset','y');
+}
+
+function toggleLive(){
+  LIVE_MODE=document.getElementById('liveTog').checked;
+  var lbl=document.getElementById('liveLabel');
+  var tag=document.getElementById('modeTag');
+  if(LIVE_MODE){
+    lbl.textContent='LIVE';
+    lbl.style.cssText='font-size:8px;font-family:var(--mono);padding:2px 7px;border-radius:3px;background:#00ff8815;color:var(--up);border:1px solid #00ff8840;';
+    tag.textContent='LIVE TRADING';tag.className='mode-tag live';
+    addLog('⚠️ LIVE MODE ON — real money trades enabled!','r');
+    fetchLiveBalance();
+  } else {
+    lbl.textContent='PAPER';
+    lbl.style.cssText='font-size:8px;font-family:var(--mono);padding:2px 7px;border-radius:3px;background:#ff225515;color:var(--dn);border:1px solid #ff225540;';
+    tag.textContent='PAPER TRADING';tag.className='mode-tag sim';
+    addLog('Live mode OFF — paper trading','y');
+  }
 }
 
 // Init
