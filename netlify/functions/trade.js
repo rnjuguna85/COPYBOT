@@ -1,6 +1,6 @@
 const crypto = require('crypto');
-const net = require('net');
-const tls = require('tls');
+const https = require('https');
+const http = require('http');
 
 const CREDS = {
   key: '44c916f2-a6e7-3cc7-9a17-d9b7969e5960',
@@ -78,7 +78,6 @@ exports.handler = async function(event, context) {
 };
 
 function sign(method, path, body, timestamp) {
-  // Polymarket CLOB signing: timestamp + method + path (no query string) + body
   const pathOnly = path.split('?')[0];
   const msg = timestamp + method + pathOnly + (body || '');
   const hmac = crypto.createHmac('sha256', Buffer.from(CREDS.secret, 'base64'));
@@ -90,7 +89,6 @@ function buildOrder(tokenId, price, size, side) {
   const isBuy = side === 'BUY';
   const priceNum = parseFloat(price);
   const sizeNum = parseFloat(size);
-  // makerAmount and takerAmount in USDC units (6 decimals)
   const makerAmount = isBuy
     ? String(Math.round(sizeNum * priceNum * 1e6))
     : String(Math.round(sizeNum * 1e6));
@@ -114,95 +112,82 @@ function buildOrder(tokenId, price, size, side) {
   };
 }
 
+// Two-step: 1) HTTP CONNECT tunnel via proxy, 2) HTTPS request inside tunnel
 function proxyReq({ method, path, body, sig, ts }) {
   return new Promise((resolve, reject) => {
     const targetHost = 'clob.polymarket.com';
     const targetPort = 443;
     const proxyAuth = 'Basic ' + Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
 
-    const socket = net.createConnection(PROXY_PORT, PROXY_HOST, () => {
-      socket.write(
-        `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n` +
-        `Host: ${targetHost}:${targetPort}\r\n` +
-        `Proxy-Authorization: ${proxyAuth}\r\n` +
-        `Proxy-Connection: Keep-Alive\r\n` +
-        `\r\n`
-      );
-    });
-
-    socket.setTimeout(20000, () => { socket.destroy(); reject(new Error('Socket timeout')); });
-
-    let connectResponse = '';
-    let upgraded = false;
-
-    socket.on('data', (chunk) => {
-      if (upgraded) return;
-      connectResponse += chunk.toString();
-      if (connectResponse.includes('\r\n\r\n')) {
-        if (!connectResponse.includes('200')) {
-          socket.destroy();
-          reject(new Error('Proxy CONNECT failed: ' + connectResponse.split('\r\n')[0]));
-          return;
-        }
-        upgraded = true;
-        socket.removeAllListeners('data');
-
-        const tlsSocket = tls.connect({ socket, servername: targetHost, rejectUnauthorized: true }, () => {
-          const reqHeaders = {
-            'Host': targetHost,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Accept-Encoding': 'identity',
-            'Connection': 'close',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Origin': 'https://polymarket.com',
-            'Referer': 'https://polymarket.com/'
-          };
-          if (sig && ts) {
-            reqHeaders['POLY_ADDRESS'] = CREDS.wallet;
-            reqHeaders['POLY_API_KEY'] = CREDS.key;
-            reqHeaders['POLY_PASSPHRASE'] = CREDS.passphrase;
-            reqHeaders['POLY_SIGNATURE'] = sig;
-            reqHeaders['POLY_TIMESTAMP'] = ts;
-          }
-          if (body) reqHeaders['Content-Length'] = String(Buffer.byteLength(body));
-
-          let req = `${method || 'GET'} ${path} HTTP/1.1\r\n`;
-          for (const [k, v] of Object.entries(reqHeaders)) req += `${k}: ${v}\r\n`;
-          req += '\r\n';
-          if (body) req += body;
-          tlsSocket.write(req);
-
-          let raw = Buffer.alloc(0);
-          tlsSocket.on('data', (chunk) => { raw = Buffer.concat([raw, chunk]); });
-          tlsSocket.on('end', () => {
-            const str = raw.toString('utf8');
-            const idx = str.indexOf('\r\n\r\n');
-            if (idx === -1) { resolve('{}'); return; }
-            let respBody = str.slice(idx + 4);
-            if (str.toLowerCase().includes('transfer-encoding: chunked')) {
-              respBody = unchunk(respBody);
-            }
-            resolve(respBody.trim() || '{}');
-          });
-          tlsSocket.on('error', reject);
-        });
-        tlsSocket.on('error', reject);
+    // Step 1: Open HTTP connection to proxy and send CONNECT
+    const connectReq = http.request({
+      host: PROXY_HOST,
+      port: PROXY_PORT,
+      method: 'CONNECT',
+      path: `${targetHost}:${targetPort}`,
+      headers: {
+        'Host': `${targetHost}:${targetPort}`,
+        'Proxy-Authorization': proxyAuth
       }
     });
-    socket.on('error', reject);
-  });
-}
 
-function unchunk(data) {
-  let result = '', pos = 0;
-  while (pos < data.length) {
-    const lineEnd = data.indexOf('\r\n', pos);
-    if (lineEnd === -1) break;
-    const size = parseInt(data.slice(pos, lineEnd), 16);
-    if (isNaN(size) || size === 0) break;
-    result += data.slice(lineEnd + 2, lineEnd + 2 + size);
-    pos = lineEnd + 2 + size + 2;
-  }
-  return result || data;
+    connectReq.setTimeout(15000, () => {
+      connectReq.destroy();
+      reject(new Error('CONNECT timeout'));
+    });
+
+    connectReq.on('connect', (res, socket, head) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        reject(new Error('Proxy CONNECT failed: HTTP/' + res.statusCode));
+        return;
+      }
+
+      // Step 2: HTTPS request through the tunnel
+      const reqHeaders = {
+        'Host': targetHost,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Connection': 'close',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Origin': 'https://polymarket.com',
+        'Referer': 'https://polymarket.com/'
+      };
+      if (sig && ts) {
+        reqHeaders['POLY_ADDRESS'] = CREDS.wallet;
+        reqHeaders['POLY_API_KEY'] = CREDS.key;
+        reqHeaders['POLY_PASSPHRASE'] = CREDS.passphrase;
+        reqHeaders['POLY_SIGNATURE'] = sig;
+        reqHeaders['POLY_TIMESTAMP'] = ts;
+      }
+      if (body) reqHeaders['Content-Length'] = String(Buffer.byteLength(body));
+
+      const tlsReq = https.request({
+        host: targetHost,
+        port: targetPort,
+        path: path,
+        method: method || 'GET',
+        headers: reqHeaders,
+        socket: socket,
+        agent: false,
+        rejectUnauthorized: true
+      }, (tlsRes) => {
+        let data = '';
+        tlsRes.on('data', chunk => data += chunk);
+        tlsRes.on('end', () => resolve(data || '{}'));
+      });
+
+      tlsReq.setTimeout(15000, () => {
+        tlsReq.destroy();
+        reject(new Error('HTTPS request timeout'));
+      });
+
+      if (body) tlsReq.write(body);
+      tlsReq.end();
+      tlsReq.on('error', reject);
+    });
+
+    connectReq.on('error', reject);
+    connectReq.end();
+  });
 }
