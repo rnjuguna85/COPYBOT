@@ -11,8 +11,8 @@ const CREDS = {
 
 // Webshare rotating residential - correct port for auth
 const PROXY_HOST = 'p.webshare.io';
-const PROXY_PORT = 10000;
-const PROXY_USER = 'yuxojbiw-ae-ch-fm-gb-gd-gf-gi-gm-gt-je-jo-jp-ke-kg-kn-kr-kw-kz-la-lb-lc-li-lk-lr-ls-lt-lu-lv-ly-ma-mc-md-me-mf-mg-mh-mk-ml-mm-mn-mo-mp-mq-mr-ms-mt-mu-mv-mw-mx-my-mz-na-nc-ne-ng-ni-nl-no-np-nz-om-pa-pe-pg-ph-pk-pl-pr-ps-pt-pw-py-qa-re-ro-rs-ru-rw-sa-sb-sc-sd-se-sg-sh-si-sk-sl-sm-sn-so-sr-ss-st-sx-sy-tc-tg-th-tj-tl-tn-to-tr-tt-tw-tz-ua-ug-us-uy-uz-vc-ve-vg-vi-vn-vu-ws-ye-yt-za-zm-zw-701';
+const PROXY_PORT = 80;
+const PROXY_USER = 'yuxojbiw-ae-ch-fm-gb-gd-gf-gi-gm-gt-je-jo-jp-ke-kg-kn-kr-kw-kz-la-lb-lc-li-lk-lr-ls-lt-lu-lv-ly-ma-mc-md-me-mf-mg-mh-mk-ml-mm-mn-mo-mp-mq-mr-ms-mt-mu-mv-mw-mx-my-mz-na-nc-ne-ng-ni-nl-no-np-nz-om-pa-pe-pg-ph-pk-pl-pr-ps-pt-pw-py-qa-re-ro-rs-ru-rw-sa-sb-sc-sd-se-sg-sh-si-sk-sl-sm-sn-so-sr-ss-st-sx-sy-tc-tg-th-tj-tl-tn-to-tr-tt-tw-tz-ua-ug-us-uy-uz-vc-ve-vg-vi-vn-vu-ws-ye-yt-za-zm-zw-701-rotate';
 const PROXY_PASS = '4sfnpgej42vg';
 
 exports.handler = async function(event, context) {
