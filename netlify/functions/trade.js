@@ -11,18 +11,11 @@ const CREDS = {
   wallet: '0x59C4538942576428A7EC8Ea3A0966AA3d6416A96'
 };
 
-const PROXIES = [
-  { host: '23.95.150.145', port: 6114 },
-  { host: '198.23.239.134', port: 6540 },
-  { host: '107.172.163.27', port: 6543 },
-  { host: '216.10.27.159', port: 6837 }
-];
-const PROXY_USER = 'yuxojbiw';
+// Webshare Rotating Residential US proxy
+const PROXY_HOST = 'p.webshare.io';
+const PROXY_PORT = 80;
+const PROXY_USER = 'yuxojbiw-ae-ch-fm-gb-gd-gf-gi-gm-gt-je-jo-jp-ke-kg-kn-kr-kw-kz-la-lb-lc-li-lk-lr-ls-lt-lu-lv-ly-ma-mc-md-me-mf-mg-mh-mk-ml-mm-mn-mo-mp-mq-mr-ms-mt-mu-mv-mw-mx-my-mz-na-nc-ne-ng-ni-nl-no-np-nz-om-pa-pe-pg-ph-pk-pl-pr-ps-pt-pw-py-qa-re-ro-rs-ru-rw-sa-sb-sc-sd-se-sg-sh-si-sk-sl-sm-sn-so-sr-ss-st-sx-sy-tc-tg-th-tj-tl-tn-to-tr-tt-tw-tz-ua-ug-us-uy-uz-vc-ve-vg-vi-vn-vu-ws-ye-yt-za-zm-zw-701';
 const PROXY_PASS = '4sfnpgej42vg';
-
-function getProxy() {
-  return PROXIES[Math.floor(Math.random() * PROXIES.length)];
-}
 
 exports.handler = async function(event, context) {
   const headers = {
@@ -113,17 +106,14 @@ function buildOrder(tokenId, price, size, side) {
   };
 }
 
-// ── HTTPS through proxy CONNECT tunnel ───────────────────────
+// ── HTTPS through residential proxy CONNECT tunnel ───────────
 function proxyReq({ method, path, body, sig, ts }) {
   return new Promise((resolve, reject) => {
-    const proxy = getProxy();
     const targetHost = 'clob.polymarket.com';
     const targetPort = 443;
     const auth = Buffer.from(PROXY_USER + ':' + PROXY_PASS).toString('base64');
 
-    // Step 1: TCP connect to proxy
-    const socket = net.createConnection(proxy.port, proxy.host, () => {
-      // Step 2: Send CONNECT request
+    const socket = net.createConnection(PROXY_PORT, PROXY_HOST, () => {
       socket.write(
         `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n` +
         `Host: ${targetHost}:${targetPort}\r\n` +
@@ -132,13 +122,16 @@ function proxyReq({ method, path, body, sig, ts }) {
       );
     });
 
-    socket.setTimeout(10000, () => {
+    socket.setTimeout(15000, () => {
       socket.destroy();
       reject(new Error('Socket timeout'));
     });
 
     let connectResponse = '';
+    let upgraded = false;
+
     socket.on('data', (chunk) => {
+      if (upgraded) return;
       connectResponse += chunk.toString();
       if (connectResponse.includes('\r\n\r\n')) {
         if (!connectResponse.includes('200')) {
@@ -146,15 +139,14 @@ function proxyReq({ method, path, body, sig, ts }) {
           reject(new Error('Proxy CONNECT failed: ' + connectResponse.split('\r\n')[0]));
           return;
         }
-
-        // Step 3: Upgrade to TLS
+        upgraded = true;
         socket.removeAllListeners('data');
+
         const tlsSocket = tls.connect({
           socket,
           servername: targetHost,
           rejectUnauthorized: true
         }, () => {
-          // Step 4: Send HTTP request
           const reqHeaders = {
             'Host': targetHost,
             'Content-Type': 'application/json',
@@ -184,7 +176,6 @@ function proxyReq({ method, path, body, sig, ts }) {
 
           tlsSocket.write(req);
 
-          // Step 5: Read response
           let raw = Buffer.alloc(0);
           tlsSocket.on('data', (chunk) => {
             raw = Buffer.concat([raw, chunk]);
@@ -195,21 +186,20 @@ function proxyReq({ method, path, body, sig, ts }) {
             const idx = str.indexOf('\r\n\r\n');
             if (idx === -1) { resolve('{}'); return; }
             let respBody = str.slice(idx + 4);
-            // Handle chunked transfer encoding
             if (str.toLowerCase().includes('transfer-encoding: chunked')) {
               respBody = unchunk(respBody);
             }
             resolve(respBody.trim() || '{}');
           });
 
-          tlsSocket.on('error', (err) => reject(err));
+          tlsSocket.on('error', reject);
         });
 
-        tlsSocket.on('error', (err) => reject(err));
+        tlsSocket.on('error', reject);
       }
     });
 
-    socket.on('error', (err) => reject(err));
+    socket.on('error', reject);
   });
 }
 
