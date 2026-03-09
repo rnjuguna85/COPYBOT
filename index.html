@@ -593,6 +593,8 @@ function processRealTrade(wid,rawTrade,lag){
 
   // Skip non-trade events
   if(rawTrade.type&&rawTrade.type!=='TRADE')return;
+  // DEBUG: log raw fields once to find tokenId field
+  if(!window._dbgLogged){window._dbgLogged=true;addLog('[DBG] raw keys: '+Object.keys(rawTrade).join(','),'y');addLog('[DBG] asset='+rawTrade.asset_id+' tok='+rawTrade.tokenId+' ci='+rawTrade.conditionId,'y');}
 
   var side=rawTrade.side;
   if(!side||side.toUpperCase()==='SELL'){
@@ -619,6 +621,7 @@ function processRealTrade(wid,rawTrade,lag){
     detectedAt:Date.now()-lag,
     lag:Math.round(lag),
     market:rawTrade.conditionId||'',
+    tokenId:rawTrade.asset_id||rawTrade.tokenId||rawTrade.token_id||'',
     marketTitle:marketTitle,
     rawId:rawTrade.transactionHash||rawTrade.id||''
   };
