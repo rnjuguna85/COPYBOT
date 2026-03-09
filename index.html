@@ -417,11 +417,11 @@ async function getTokenId(conditionId, isYes){
 async function placeClobOrder(tokenId,price,size,side){
   var isBuy=(side==='BUY'||side==='YES');
   var p=parseFloat(price),s=parseFloat(size);
-  // makerAmount = what you give, takerAmount = what you get
-  // BUY YES: you give USDC, you get tokens
-  // SELL/NO: you give tokens, you get USDC
-  var makerAmt=isBuy?Math.round(s*p*1e6):Math.round(s*1e6);
-  var takerAmt=isBuy?Math.round(s*1e6):Math.round(s*p*1e6);
+  // Per Polymarket CLOB spec:
+  // BUY:  makerAmount = USDC (size * 1e6), takerAmount = tokens (size/price * 1e6)
+  // SELL: makerAmount = tokens (size * 1e6), takerAmount = USDC (size*price * 1e6)
+  var makerAmt=isBuy ? Math.round(s*1e6) : Math.round(s*1e6);
+  var takerAmt=isBuy ? Math.round((s/p)*1e6) : Math.round(s*p*1e6);
   var order={
     salt:String(Date.now()),
     maker:CREDS.wallet,
