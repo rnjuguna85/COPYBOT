@@ -402,15 +402,14 @@ async function getTokenId(conditionId, isYes){
   var key=conditionId+'_'+(isYes?'YES':'NO');
   if(tokenCache[key]) return tokenCache[key];
   try{
-    var r=await fetch('https://gamma-api.polymarket.com/markets?condition_id='+conditionId);
+    var r=await fetch(PROXY+'?endpoint=tokens&condition_id='+conditionId);
     var data=await r.json();
-    var market=Array.isArray(data)?data[0]:data;
-    var tokens=market&&market.clobTokenIds?JSON.parse(market.clobTokenIds):null;
-    if(tokens&&tokens.length>=2){
-      tokenCache[conditionId+'_YES']=tokens[0];
-      tokenCache[conditionId+'_NO']=tokens[1];
-      return isYes?tokens[0]:tokens[1];
+    if(data.yes&&data.no){
+      tokenCache[conditionId+'_YES']=data.yes;
+      tokenCache[conditionId+'_NO']=data.no;
+      return isYes?data.yes:data.no;
     }
+    addLog('[DBG] token resp: '+JSON.stringify(data).slice(0,100),'y');
   }catch(e){addLog('[DBG] token lookup failed: '+e.message,'r');}
   return null;
 }
