@@ -434,7 +434,7 @@ async function placeClobOrder(tokenId,price,size,side){
     nonce:'0',
     feeRateBps:'0',
     side:isBuy?'BUY':'SELL',
-    signatureType:'0',
+    signatureType:'1',
     signature:'0x'
   };
   var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
