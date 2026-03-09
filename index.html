@@ -396,6 +396,25 @@ async function clobFetch(method,path,body){
   var txt=await r.text();
   try{return JSON.parse(txt);}catch(e){throw new Error('Non-JSON response: '+txt.slice(0,120));}
 }
+// ── Token ID cache: conditionId+side → clobTokenId ──────────
+var tokenCache={};
+async function getTokenId(conditionId, isYes){
+  var key=conditionId+'_'+(isYes?'YES':'NO');
+  if(tokenCache[key]) return tokenCache[key];
+  try{
+    var r=await fetch('https://gamma-api.polymarket.com/markets?condition_id='+conditionId);
+    var data=await r.json();
+    var market=Array.isArray(data)?data[0]:data;
+    var tokens=market&&market.clobTokenIds?JSON.parse(market.clobTokenIds):null;
+    if(tokens&&tokens.length>=2){
+      tokenCache[conditionId+'_YES']=tokens[0];
+      tokenCache[conditionId+'_NO']=tokens[1];
+      return isYes?tokens[0]:tokens[1];
+    }
+  }catch(e){addLog('[DBG] token lookup failed: '+e.message,'r');}
+  return null;
+}
+
 async function placeClobOrder(tokenId,price,size,side){
   var isBuy=(side==='BUY'||side==='YES');
   var p=parseFloat(price),s=parseFloat(size);
@@ -761,8 +780,12 @@ async function placeLiveTrade(tr, stake){
   if(!LIVE_MODE) return false;
   try{
     addLog('[LIVE] Placing real order: '+tr.side+' $'+stake+' @'+tr.entry+'c','y');
-    addLog('[DBG] tokenId='+tr.tokenId+' market='+tr.market,'y');
-    var data=await placeClobOrder(tr.tokenId||tr.market, tr.entry/100, stake, tr.side);
+    // Look up the real clobTokenId from conditionId
+    var isYes=(tr.side==='YES');
+    var tokenId=await getTokenId(tr.market, isYes);
+    addLog('[DBG] conditionId='+tr.market+' tokenId='+tokenId,'y');
+    if(!tokenId){addLog('[LIVE] Order failed: could not resolve tokenId','r');return false;}
+    var data=await placeClobOrder(tokenId, tr.entry/100, stake, tr.side);
     if(data.orderID||data.id||data.success||(data.order&&data.order.id)){
       var id=data.orderID||data.id||(data.order&&data.order.id)||'OK';
       addLog('[LIVE] Order placed! ID: '+id,'g');
