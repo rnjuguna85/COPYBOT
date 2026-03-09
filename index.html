@@ -417,16 +417,28 @@ async function getTokenId(conditionId, isYes){
 async function placeClobOrder(tokenId,price,size,side){
   var isBuy=(side==='BUY'||side==='YES');
   var p=parseFloat(price),s=parseFloat(size);
+  // makerAmount = what you give, takerAmount = what you get
+  // BUY YES: you give USDC, you get tokens
+  // SELL/NO: you give tokens, you get USDC
+  var makerAmt=isBuy?Math.round(s*p*1e6):Math.round(s*1e6);
+  var takerAmt=isBuy?Math.round(s*1e6):Math.round(s*p*1e6);
   var order={
-    salt:String(Date.now()),maker:CREDS.wallet,signer:CREDS.wallet,
+    salt:String(Date.now()),
+    maker:CREDS.wallet,
+    signer:CREDS.wallet,
     taker:'0x0000000000000000000000000000000000000000',
     tokenId:String(tokenId),
-    makerAmount:isBuy?String(Math.round(s*p*1e6)):String(Math.round(s*1e6)),
-    takerAmount:isBuy?String(Math.round(s*1e6)):String(Math.round(s*p*1e6)),
-    expiration:'0',nonce:'0',feeRateBps:'0',
-    side:isBuy?'0':'1',signatureType:'0',signature:'0x'
+    makerAmount:String(makerAmt),
+    takerAmount:String(takerAmt),
+    expiration:'0',
+    nonce:'0',
+    feeRateBps:'0',
+    side:isBuy?'BUY':'SELL',
+    signatureType:'0',
+    signature:'0x'
   };
   var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
+  addLog('[DBG] order side='+order.side+' maker='+order.makerAmount+' taker='+order.takerAmount+' tok='+String(tokenId).slice(0,10)+'...','y');
   return clobFetch('POST','/order',body);
 }
 var LIVE_MODE=false;
