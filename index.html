@@ -355,13 +355,13 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
 </div>
 
 <script>
-var PROXY='/.netlify/functions/polymarket';
-var TRADE='/.netlify/functions/trade';
+var PROXY='https://orange-pine-941a.reuben-njuguna.workers.dev';
+var TRADE='https://orange-pine-941a.reuben-njuguna.workers.dev';
 var LIVE_MODE=false;
 var S={running:false,bal:200,startBal:200,pnl:0,wins:0,losses:0,trades:0,skips:0,dailyLoss:0,earlyExits:0,staleSkips:0,lagSamples:[],slipSamples:[],liveBalance:0};
-var W={1:{id:1,on:true,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w1)',lastTxIds:[],lastPositionIds:[]},
-       2:{id:2,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w2)',lastTxIds:[],lastPositionIds:[]},
-       3:{id:3,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w3)',lastTxIds:[],lastPositionIds:[]}};
+var W={1:{id:1,on:true,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w1)',lastTxIds:[],lastPositionIds:[],initialized:false},
+       2:{id:2,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w2)',lastTxIds:[],lastPositionIds:[],initialized:false},
+       3:{id:3,on:false,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w3)',lastTxIds:[],lastPositionIds:[],initialized:false}};
 var allTrades=[],openTrades=[],pollT={1:null,2:null,3:null},resT=[],clockTmr=null,posTmr=null,logCount=0;
 var needBal=false,needPos=false,needTrd=false,rafId=null;
 
@@ -473,6 +473,18 @@ async function pollRealWallet(wid){
   if(!trades.length){
     addLog('[W'+wid+'] No activity found','y');
     setWL(wid,'No trades found yet');
+    schedPoll(wid);return;
+  }
+
+  // First poll: seed seen IDs without processing (prevents replaying history)
+  if(!W[wid].initialized){
+    trades.forEach(function(t){
+      var uid=t.transactionHash||t.id||'';
+      if(uid)W[wid].lastTxIds.push(uid);
+    });
+    W[wid].initialized=true;
+    addLog('[W'+wid+'] Initialized — watching for NEW trades only ('+trades.length+' existing skipped)','y');
+    setWL(wid,'Watching — '+trades.length+' trades baseline');
     schedPoll(wid);return;
   }
 
@@ -885,7 +897,7 @@ function startBot(){
   S.startBal=parseFloat(document.getElementById('gBal').value)||200;
   S.bal=S.startBal;S.pnl=0;S.wins=0;S.losses=0;S.trades=0;S.skips=0;S.dailyLoss=0;S.earlyExits=0;S.staleSkips=0;S.lagSamples=[];S.slipSamples=[];
   allTrades=[];openTrades=[];
-  [1,2,3].forEach(function(w){W[w].sh=[];W[w].avg=0;W[w].wins=0;W[w].losses=0;W[w].trades=0;W[w].pnl=0;W[w].exits=0;W[w].lastTxIds=[];W[w].lastPositionIds=[];updWStats(w);});
+  [1,2,3].forEach(function(w){W[w].sh=[];W[w].avg=0;W[w].wins=0;W[w].losses=0;W[w].trades=0;W[w].pnl=0;W[w].exits=0;W[w].lastTxIds=[];W[w].lastPositionIds=[];W[w].initialized=false;updWStats(w);});
   S.running=true;
   document.getElementById('btnStart').disabled=true;
   document.getElementById('btnStop').disabled=false;
