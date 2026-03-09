@@ -595,6 +595,7 @@ function processRealTrade(wid,rawTrade,lag){
   if(rawTrade.type&&rawTrade.type!=='TRADE')return;
   // DEBUG: log raw fields once to find tokenId field
   if(!window._dbgLogged){window._dbgLogged=true;addLog('[DBG] raw keys: '+Object.keys(rawTrade).join(','),'y');addLog('[DBG] asset='+rawTrade.asset_id+' tok='+rawTrade.tokenId+' ci='+rawTrade.conditionId,'y');}
+  addLog('[DBG2] '+JSON.stringify(rawTrade).slice(0,200),'y');
 
   var side=rawTrade.side;
   if(!side||side.toUpperCase()==='SELL'){
@@ -760,6 +761,7 @@ async function placeLiveTrade(tr, stake){
   if(!LIVE_MODE) return false;
   try{
     addLog('[LIVE] Placing real order: '+tr.side+' $'+stake+' @'+tr.entry+'c','y');
+    addLog('[DBG] tokenId='+tr.tokenId+' market='+tr.market,'y');
     var data=await placeClobOrder(tr.tokenId||tr.market, tr.entry/100, stake, tr.side);
     if(data.orderID||data.id||data.success||(data.order&&data.order.id)){
       var id=data.orderID||data.id||(data.order&&data.order.id)||'OK';
