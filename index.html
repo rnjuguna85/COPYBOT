@@ -652,7 +652,7 @@ function processRealTrade(wid,rawTrade,lag){
     detectedAt:Date.now()-lag,
     lag:Math.round(lag),
     market:rawTrade.conditionId||'',
-    tokenId:rawTrade.asset_id||rawTrade.tokenId||rawTrade.token_id||'',
+    tokenId:rawTrade.asset||rawTrade.asset_id||rawTrade.tokenId||rawTrade.token_id||'',
     marketTitle:marketTitle,
     rawId:rawTrade.transactionHash||rawTrade.id||''
   };
@@ -791,10 +791,10 @@ async function placeLiveTrade(tr, stake){
   if(!LIVE_MODE) return false;
   try{
     addLog('[LIVE] Placing real order: '+tr.side+' $'+stake+' @'+tr.entry+'c','y');
-    // Look up the real clobTokenId from conditionId
+    // Use tokenId from raw trade if available, else look up
     var isYes=(tr.side==='YES');
-    var tokenId=await getTokenId(tr.market, isYes);
-    addLog('[DBG] conditionId='+tr.market+' tokenId='+tokenId,'y');
+    var tokenId=tr.tokenId||await getTokenId(tr.market, isYes);
+    addLog('[DBG] tokenId='+String(tokenId).slice(0,20)+'... market='+tr.market.slice(0,10),'y');
     if(!tokenId){addLog('[LIVE] Order failed: could not resolve tokenId','r');return false;}
     var data=await placeClobOrder(tokenId, tr.entry/100, stake, tr.side);
     if(data.orderID||data.id||data.success||(data.order&&data.order.id)){
