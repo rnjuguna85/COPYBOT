@@ -357,6 +357,60 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;
 <script>
 var PROXY='https://orange-pine-941a.reuben-njuguna.workers.dev';
 var TRADE='https://orange-pine-941a.reuben-njuguna.workers.dev';
+
+// ── Direct CLOB signing (browser sends orders, uses VPN IP) ──
+var CREDS={
+  key:'44c916f2-a6e7-3cc7-9a17-d9b7969e5960',
+  secret:'ccStQQiZBJLNIei-DPSnFV0wvx--h0S8SCNKR-hNje8=',
+  passphrase:'ef6d912800357da4e74b2f551a50525765fef8fe166f3340026b879f3d4ea09c',
+  wallet:'0xB9FDC75F064B9533f41b38eb6deebB577aa8fFB3'
+};
+var CLOB_URL='https://clob.polymarket.com';
+
+function b64ToBytes(b64){
+  var s=b64.replace(/-/g,'+').replace(/_/g,'/');
+  var bin=atob(s),b=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return b;
+}
+function bytesToB64Url(b){
+  var s='';for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_');
+}
+async function signHmac(msg,secret){
+  var key=await crypto.subtle.importKey('raw',b64ToBytes(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  var sig=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(msg));
+  return bytesToB64Url(new Uint8Array(sig));
+}
+async function clobFetch(method,path,body){
+  var ts=Math.floor(Date.now()/1000).toString();
+  var pathOnly=path.split('?')[0];
+  var sig=await signHmac(ts+method+pathOnly+(body||''),CREDS.secret);
+  var hdrs={
+    'Content-Type':'application/json','Accept':'application/json',
+    'Origin':'https://polymarket.com','Referer':'https://polymarket.com/',
+    'User-Agent':'Mozilla/5.0',
+    'POLY_ADDRESS':CREDS.wallet,'POLY_API_KEY':CREDS.key,
+    'POLY_PASSPHRASE':CREDS.passphrase,'POLY_SIGNATURE':sig,'POLY_TIMESTAMP':ts
+  };
+  var r=await fetch(CLOB_URL+path,{method,headers:hdrs,body:body||undefined});
+  var txt=await r.text();
+  try{return JSON.parse(txt);}catch(e){throw new Error('Non-JSON response: '+txt.slice(0,120));}
+}
+async function placeClobOrder(tokenId,price,size,side){
+  var isBuy=(side==='BUY'||side==='YES');
+  var p=parseFloat(price),s=parseFloat(size);
+  var order={
+    salt:String(Date.now()),maker:CREDS.wallet,signer:CREDS.wallet,
+    taker:'0x0000000000000000000000000000000000000000',
+    tokenId:String(tokenId),
+    makerAmount:isBuy?String(Math.round(s*p*1e6)):String(Math.round(s*1e6)),
+    takerAmount:isBuy?String(Math.round(s*1e6)):String(Math.round(s*p*1e6)),
+    expiration:'0',nonce:'0',feeRateBps:'0',
+    side:isBuy?'0':'1',signatureType:'0',signature:'0x'
+  };
+  var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
+  return clobFetch('POST','/order',body);
+}
 var LIVE_MODE=false;
 var S={running:false,bal:200,startBal:200,pnl:0,wins:0,losses:0,trades:0,skips:0,dailyLoss:0,earlyExits:0,staleSkips:0,lagSamples:[],slipSamples:[],liveBalance:0};
 var W={1:{id:1,on:true,sh:[],avg:0,wins:0,losses:0,trades:0,pnl:0,exits:0,col:'var(--w1)',lastTxIds:[],lastPositionIds:[],initialized:false},
@@ -703,15 +757,10 @@ async function placeLiveTrade(tr, stake){
   if(!LIVE_MODE) return false;
   try{
     addLog('[LIVE] Placing real order: '+tr.side+' $'+stake+' @'+tr.entry+'c','y');
-    var body=JSON.stringify({
-      tokenId: tr.tokenId||tr.market,
-      price: tr.entry/100,
-      size: stake
-    });
-    var r=await fetch(TRADE+'?action=buy',{method:'POST',headers:{'Content-Type':'application/json'},body:body});
-    var data=await r.json();
-    if(data.orderID||data.id||data.success){
-      addLog('[LIVE] Order placed! ID: '+(data.orderID||data.id||'OK'),'g');
+    var data=await placeClobOrder(tr.tokenId||tr.market, tr.entry/100, stake, tr.side);
+    if(data.orderID||data.id||data.success||(data.order&&data.order.id)){
+      var id=data.orderID||data.id||(data.order&&data.order.id)||'OK';
+      addLog('[LIVE] Order placed! ID: '+id,'g');
       return true;
     } else {
       addLog('[LIVE] Order failed: '+JSON.stringify(data),'r');
