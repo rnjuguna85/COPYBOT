@@ -438,9 +438,9 @@ async function placeClobOrder(tokenId,price,size,side){
     signature:'0x'
   };
   var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
-  addLog('[DBG] BODY='+body.slice(0,300),'y');
+  addLog('[DBG] BODY='+body,'y');
   var result=await clobFetch('POST','/order',body);
-  addLog('[DBG] RESP='+JSON.stringify(result).slice(0,200),'y');
+  addLog('[DBG] RESP='+JSON.stringify(result),'y');
   return result;
 }
 var LIVE_MODE=false;
