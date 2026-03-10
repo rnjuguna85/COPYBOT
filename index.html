@@ -388,7 +388,7 @@ function loadEthers(){
 async function signOrderEIP712(order){
   var ethers=await loadEthers();
   var wallet=new ethers.Wallet(PRIV_KEY);
-  var domain={name:'ClobAuthDomain',version:'1',chainId:CHAIN_ID,verifyingContract:CTF_EXCHANGE};
+  var domain={name:'Polymarket CTF Exchange',version:'1',chainId:CHAIN_ID,verifyingContract:CTF_EXCHANGE};
   var types={Order:[
     {name:'salt',type:'uint256'},{name:'maker',type:'address'},{name:'signer',type:'address'},
     {name:'taker',type:'address'},{name:'tokenId',type:'uint256'},{name:'makerAmount',type:'uint256'},
