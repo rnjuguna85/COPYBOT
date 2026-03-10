@@ -378,7 +378,7 @@ function loadEthers(){
   _ethersPromise=new Promise(function(res,rej){
     if(window.ethers){res(window.ethers);return;}
     var s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js';
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js';
     s.onload=function(){addLog('[DBG] ethers.js ready','b');res(window.ethers);};
     s.onerror=function(){rej(new Error('ethers.js load failed'));};
     document.head.appendChild(s);
@@ -396,13 +396,13 @@ async function signOrderEIP712(order){
     {name:'feeRateBps',type:'uint256'},{name:'side',type:'uint8'},{name:'signatureType',type:'uint8'}
   ]};
   var value={
-    salt:BigInt(order.salt),maker:order.maker,signer:order.signer,taker:order.taker,
-    tokenId:BigInt(order.tokenId),makerAmount:BigInt(order.makerAmount),
-    takerAmount:BigInt(order.takerAmount),expiration:BigInt(order.expiration),
-    nonce:BigInt(order.nonce),feeRateBps:BigInt(order.feeRateBps),
+    salt:String(order.salt),maker:order.maker,signer:order.signer,taker:order.taker,
+    tokenId:String(order.tokenId),makerAmount:String(order.makerAmount),
+    takerAmount:String(order.takerAmount),expiration:String(order.expiration),
+    nonce:String(order.nonce),feeRateBps:String(order.feeRateBps),
     side:order.side,signatureType:order.signatureType
   };
-  return await wallet.signTypedData(domain,types,value);
+  return await wallet._signTypedData(domain,types,value);
 }
 
 function b64ToBytes(b64){
