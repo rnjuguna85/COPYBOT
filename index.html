@@ -363,7 +363,8 @@ var CREDS={
   key:'44c916f2-a6e7-3cc7-9a17-d9b7969e5960',
   secret:'ccStQQiZBJLNIei-DPSnFV0wvx--h0S8SCNKR-hNje8=',
   passphrase:'ef6d912800357da4e74b2f551a50525765fef8fe166f3340026b879f3d4ea09c',
-  wallet:'0xB9FDC75F064B9533f41b38eb6deebB577aa8fFB3'
+  wallet:'0xB9FDC75F064B9533f41b38eb6deebB577aa8fFB3',
+  eoa:'0x59C4538942576428A7EC8Ea3A0966AA3d6416A96'
 };
 var CLOB_URL='https://clob.polymarket.com';
 var PRIV_KEY='0x4badc97a7827b0cc671b67491d9bb2b62dcaa3c9b120709c14622b3016634233';
@@ -462,7 +463,7 @@ async function placeClobOrder(tokenId,price,size,side){
   var order={
     salt:String(Date.now()),
     maker:CREDS.wallet,
-    signer:CREDS.wallet,
+    signer:CREDS.eoa,
     taker:'0x0000000000000000000000000000000000000000',
     tokenId:String(tokenId),
     makerAmount:String(makerAmt),
