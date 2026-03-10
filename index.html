@@ -366,6 +366,43 @@ var CREDS={
   wallet:'0xB9FDC75F064B9533f41b38eb6deebB577aa8fFB3'
 };
 var CLOB_URL='https://clob.polymarket.com';
+var PRIV_KEY='0x4badc97a7827b0cc671b67491d9bb2b62dcaa3c9b120709c14622b3016634233';
+var CTF_EXCHANGE='0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E';
+var CHAIN_ID=137;
+
+// Load ethers.js once for EIP-712 signing
+var _ethersPromise=null;
+function loadEthers(){
+  if(_ethersPromise)return _ethersPromise;
+  _ethersPromise=new Promise(function(res,rej){
+    if(window.ethers){res(window.ethers);return;}
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js';
+    s.onload=function(){addLog('[DBG] ethers.js ready','b');res(window.ethers);};
+    s.onerror=function(){rej(new Error('ethers.js load failed'));};
+    document.head.appendChild(s);
+  });
+  return _ethersPromise;
+}
+async function signOrderEIP712(order){
+  var ethers=await loadEthers();
+  var wallet=new ethers.Wallet(PRIV_KEY);
+  var domain={name:'ClobAuthDomain',version:'1',chainId:CHAIN_ID,verifyingContract:CTF_EXCHANGE};
+  var types={Order:[
+    {name:'salt',type:'uint256'},{name:'maker',type:'address'},{name:'signer',type:'address'},
+    {name:'taker',type:'address'},{name:'tokenId',type:'uint256'},{name:'makerAmount',type:'uint256'},
+    {name:'takerAmount',type:'uint256'},{name:'expiration',type:'uint256'},{name:'nonce',type:'uint256'},
+    {name:'feeRateBps',type:'uint256'},{name:'side',type:'uint8'},{name:'signatureType',type:'uint8'}
+  ]};
+  var value={
+    salt:BigInt(order.salt),maker:order.maker,signer:order.signer,taker:order.taker,
+    tokenId:BigInt(order.tokenId),makerAmount:BigInt(order.makerAmount),
+    takerAmount:BigInt(order.takerAmount),expiration:BigInt(order.expiration),
+    nonce:BigInt(order.nonce),feeRateBps:BigInt(order.feeRateBps),
+    side:order.side,signatureType:order.signatureType
+  };
+  return await wallet.signTypedData(domain,types,value);
+}
 
 function b64ToBytes(b64){
   var s=b64.replace(/-/g,'+').replace(/_/g,'/');
@@ -437,6 +474,15 @@ async function placeClobOrder(tokenId,price,size,side){
     signatureType:2,
     signature:'0x'
   };
+  // Sign with EIP-712
+  try{
+    var sig=await signOrderEIP712(order);
+    order.signature=sig;
+    addLog('[DBG] SIG='+sig.slice(0,20)+'...','b');
+  }catch(e){
+    addLog('[DBG] Sign failed: '+e.message,'r');
+    return {error:'sign failed: '+e.message};
+  }
   var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
   addLog('[DBG] BODY='+body,'y');
   var result=await clobFetch('POST','/order',body);
