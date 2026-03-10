@@ -360,14 +360,14 @@ var TRADE='https://orange-pine-941a.reuben-njuguna.workers.dev';
 
 // ── Direct CLOB signing (browser sends orders, uses VPN IP) ──
 var CREDS={
-  key:'44c916f2-a6e7-3cc7-9a17-d9b7969e5960',
-  secret:'ccStQQiZBJLNIei-DPSnFV0wvx--h0S8SCNKR-hNje8=',
-  passphrase:'ef6d912800357da4e74b2f551a50525765fef8fe166f3340026b879f3d4ea09c',
-  wallet:'0xB9FDC75F064B9533f41b38eb6deebB577aa8fFB3',
-  eoa:'0x59C4538942576428A7EC8Ea3A0966AA3d6416A96'
+  key:'131abfd2-4f89-ef2f-ee42-71116b8ac896',
+  secret:'NdBUkJFYjPmWcka_MQLhx5lz1iDagbYRSE70yC5r0q4=',
+  passphrase:'82895fd48dfc3949f738ac39213d786479ed4f18ad5da036cd32a65773abe71f',
+  wallet:'0xD6145846dE40AE903c74251677CB83d2a7b8bb19',
+  eoa:'0xD6145846dE40AE903c74251677CB83d2a7b8bb19'
 };
 var CLOB_URL='https://clob.polymarket.com';
-var PRIV_KEY='0x4badc97a7827b0cc671b67491d9bb2b62dcaa3c9b120709c14622b3016634233';
+var PRIV_KEY='0xcff6a316d1ee5bd904d1df8f874bec20f809b91ba4ee8a359472ada767e94103';
 var CTF_EXCHANGE='0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E';
 var CHAIN_ID=137;
 
@@ -472,7 +472,7 @@ async function placeClobOrder(tokenId,price,size,side){
     nonce:'0',
     feeRateBps:0,
     side:isBuy?0:1,
-    signatureType:1,
+    signatureType:0,
     signature:'0x'
   };
   // Sign with EIP-712
