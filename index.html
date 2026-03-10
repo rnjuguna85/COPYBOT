@@ -433,12 +433,12 @@ async function placeClobOrder(tokenId,price,size,side){
     expiration:'0',
     nonce:'0',
     feeRateBps:'0',
-    side:isBuy?'BUY':'SELL',
+    side:isBuy?0:1,
     signatureType:'2',
     signature:'0x'
   };
   var body=JSON.stringify({order,owner:CREDS.wallet,orderType:'GTC'});
-  addLog('[DBG] order side='+order.side+' maker='+order.makerAmount+' taker='+order.takerAmount+' tok='+String(tokenId).slice(0,10)+'...','y');
+  addLog('[DBG] order side='+order.side+' maker='+order.makerAmount+' taker='+order.takerAmount+' sigType='+order.signatureType+' tok='+String(tokenId).slice(0,10)+'...','y');
   return clobFetch('POST','/order',body);
 }
 var LIVE_MODE=false;
